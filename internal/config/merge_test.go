@@ -1013,6 +1013,74 @@ func TestLoadAndMergeTemplate_OverlayExtendsInheritsParentPackages(t *testing.T)
 	}
 }
 
+// A leaf that inherits baseline.mode: overlay from its parent (without
+// redeclaring baseline itself) must be allowed to set disk.size/disk.maxSize
+// on its own: per-layer standalone validation defers the create-mode
+// disk.maxSize rejection when extends is set, and the final merged template
+// is re-validated once folding determines the real (overlay) mode.
+func TestLoadAndMergeTemplate_OverlayExtendsChildSetsDiskMaxSize(t *testing.T) {
+	dir := t.TempDir()
+
+	parentPath := filepath.Join(dir, "parent.yml")
+	parent := "image:\n  name: parent\n  version: \"1.0\"\n" +
+		"target:\n  os: ubuntu\n  dist: ubuntu24\n  arch: x86_64\n  imageType: raw\n" +
+		"baseline:\n  mode: overlay\n  source:\n    path: /tmp/baseline.raw\n" +
+		"systemConfig:\n  name: parent\n  packages:\n    - curl\n"
+	if err := os.WriteFile(parentPath, []byte(parent), 0o644); err != nil {
+		t.Fatalf("write parent: %v", err)
+	}
+
+	leafPath := filepath.Join(dir, "leaf.yml")
+	leaf := "extends: \"parent.yml\"\n" +
+		"image:\n  name: leaf\n  version: \"1.0\"\n" +
+		"target:\n  os: ubuntu\n  dist: ubuntu24\n  arch: x86_64\n  imageType: raw\n" +
+		"disk:\n  name: overlay-disk\n  size: \"8GiB\"\n  maxSize: \"16GiB\"\n" +
+		"systemConfig:\n  name: leaf\n  packages:\n    - tree\n"
+	if err := os.WriteFile(leafPath, []byte(leaf), 0o644); err != nil {
+		t.Fatalf("write leaf: %v", err)
+	}
+
+	merged, err := LoadAndMergeTemplate(leafPath)
+	if err != nil {
+		t.Fatalf("LoadAndMergeTemplate (overlay extends, child disk.maxSize): %v", err)
+	}
+	if !merged.IsOverlayMode() {
+		t.Fatalf("expected overlay mode, got baseline=%+v", merged.Baseline)
+	}
+	if merged.Disk.MaxSize != "16GiB" {
+		t.Errorf("Disk.MaxSize = %q, want 16GiB", merged.Disk.MaxSize)
+	}
+}
+
+// A create-mode template (no baseline/overlay anywhere in the chain) that sets
+// disk.maxSize must still be rejected once fully merged, confirming the
+// per-layer deferred check is re-enforced on the final, folded result.
+func TestLoadAndMergeTemplate_CreateModeExtendsChildDiskMaxSizeStillRejected(t *testing.T) {
+	dir := t.TempDir()
+	target := TargetInfo{OS: "ubuntu", Dist: "ubuntu24", Arch: "x86_64", ImageType: "raw"}
+
+	rootPath := filepath.Join(dir, "root.yml")
+	writeExtendsTemplate(t, rootPath, "root", "", target, []string{"root-pkg"})
+
+	leafPath := filepath.Join(dir, "leaf.yml")
+	leaf := "extends: \"root.yml\"\n" +
+		"image:\n  name: leaf\n  version: \"1.0.0\"\n" +
+		"target:\n  os: ubuntu\n  dist: ubuntu24\n  arch: x86_64\n  imageType: raw\n" +
+		"disk:\n  name: create-disk\n  size: \"8GiB\"\n  maxSize: \"16GiB\"\n" +
+		"systemConfig:\n  name: leaf-config\n"
+	if err := os.WriteFile(leafPath, []byte(leaf), 0o644); err != nil {
+		t.Fatalf("write leaf: %v", err)
+	}
+
+	_, err := LoadAndMergeTemplate(leafPath)
+	if err == nil {
+		t.Fatal("expected disk.maxSize to be rejected once the final create-mode template is validated")
+	}
+	if !strings.Contains(err.Error(), "disk.maxSize is only supported when baseline.mode is") {
+		t.Errorf("expected the disk.maxSize/overlay-mode error, got: %v", err)
+	}
+}
+
 // writeExtendsTemplate writes a template that may declare an extends parent and a
 // list of system-config packages, for exercising the iterative extends fold.
 func writeExtendsTemplate(t *testing.T, path, imageName, extends string, target TargetInfo, packages []string) {

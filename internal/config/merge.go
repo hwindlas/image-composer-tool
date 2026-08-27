@@ -973,6 +973,9 @@ func LoadAndMergeTemplate(templatePath string) (*ImageTemplate, error) {
 			leafTemplate.Target.OS, leafTemplate.Target.Dist, leafTemplate.Target.Arch, leafTemplate.Target.ImageType)
 		log.Info("Proceeding without default configuration")
 		userMerged.Extends = ""
+		if err := userMerged.validateBaseline(); err != nil {
+			return nil, fmt.Errorf("merged template is invalid: %w", err)
+		}
 		return userMerged, nil
 	}
 
@@ -981,6 +984,15 @@ func LoadAndMergeTemplate(templatePath string) (*ImageTemplate, error) {
 	mergedTemplate, err := foldChain(defaultTemplate, chain)
 	if err != nil {
 		return nil, err
+	}
+
+	// Re-validate the merged result: each layer is validated in isolation before
+	// merging, and a create-mode layer with `extends` set defers its own
+	// disk.maxSize check (it may be inheriting baseline.mode: overlay from a
+	// parent). foldChain always clears Extends, so this is the authoritative,
+	// final-mode check for a genuine create-mode build.
+	if err := mergedTemplate.validateBaseline(); err != nil {
+		return nil, fmt.Errorf("merged template is invalid: %w", err)
 	}
 
 	log.Infof("Successfully created merged configuration with system config: %s and disk config: %s",
