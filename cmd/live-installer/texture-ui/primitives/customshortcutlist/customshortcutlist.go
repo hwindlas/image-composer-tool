@@ -460,13 +460,13 @@ func (l *List) Draw(screen tcell.Screen) {
 			}
 
 			for bx := 0; bx < textWidth; bx++ {
-				m, c, style, _ := screen.GetContent(x+bx, y)
+				m, style, _ := screen.Get(x+bx, y)
 				fg, _, _ := style.Decompose()
 				if fg == l.mainTextColor {
 					fg = l.selectedTextColor
 				}
 				style = style.Background(l.selectedBackgroundColor).Foreground(fg)
-				screen.SetContent(x+bx, y, m, c, style)
+				screen.Put(x+bx, y, m, style)
 			}
 		}
 

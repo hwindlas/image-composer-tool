@@ -1,10 +1,10 @@
 # =============================================================================
 # Debian 13 ("Trixie") CHILD template — add graphics packages via `extends`
-# Bayonne Bridge Project — GUI desktop variant
+# GUI desktop variant
 # =============================================================================
 #
 # This template demonstrates the EXTENDS feature: it inherits the Debian 13
-# Bayonne Bridge base (Debian 13 qcow2 input + custom initrd + qcow2 output) and
+# base (Debian 13 qcow2 input + custom initrd + qcow2 output) and
 # adds the graphics packages plus the display-manager configuration needed to
 # boot into a GUI desktop. It does NOT declare a baseline or an overlay policy
 # of its own — those come from the parent.
@@ -26,13 +26,13 @@
 # AI-searchable metadata for template discovery
 metadata:
   description: >-
-    Debian 13 (Trixie) Bayonne Bridge GUI variant — extends the Debian 13 base and
+    Debian 13 (Trixie) GUI variant — extends the Debian 13 base and
     adds graphics packages (Xorg, Mesa/Vulkan, fonts, GPU firmware) so the composed
     qcow2 supports graphical desktop applications. Demonstrates the extends feature.
   use_cases:
     - Add GUI/graphics support to the Debian 13 base via template inheritance
     - Demonstrate the extends feature adding packages onto a base template
-    - Compose a Debian 13 desktop-capable qcow2 for Bayonne Bridge
+    - Compose a Debian 13 desktop-capable qcow2
   keywords:
     - extends
     - inheritance
@@ -43,7 +43,6 @@ metadata:
     - graphics
     - desktop
     - gui
-    - bayonne-bridge
 
 # Inherit the base (baseline source, policy, disk/qcow2 output, and the custom
 # initrd). Resolved relative to this file's directory. The parent's target must
@@ -52,7 +51,7 @@ extends: "debian13-x86_64-bb-overlay-initrd-raw.yml"
 
 image:
   name: debian13-bb-graphics
-  version: "13.0.1"
+  version: "13.0.2"
 
 target:                 # must match the parent template's target
   os: debian
@@ -62,13 +61,14 @@ target:                 # must match the parent template's target
 
 systemConfig:
   name: graphics
-  description: Debian 13 Bayonne Bridge GUI variant — graphics stack added via extends
+  description: Debian 13 GUI variant — graphics stack added via extends
 
   # ---------------------------------------------------------------------------
   # Graphics packages — merged ADDITIVELY on top of the base. Enough of an
   # X/Mesa stack to run GUI desktop apps: xserver-xorg pulls the video drivers,
-  # Mesa provides GL/Vulkan, fonts + GTK cover rendering, and firmware-* covers
-  # common GPUs (loaded by the base's custom initrd, which is regenerated there).
+  # Mesa provides GL/Vulkan, fonts + GTK cover rendering, and firmware-sof-signed
+  # covers the audio DSP firmware the base's Intel GPU firmware packages don't
+  # include (GPU firmware itself comes from the base's firmware-intel-graphics).
   #
   # Do NOT add a `baseline:` or `overlayPolicy:` block here — inheriting them
   # from the parent is what keeps these packages ADDITIVE to the base.
@@ -89,9 +89,11 @@ systemConfig:
     # Fonts + rendering so GUI apps display correctly
     - fonts-dejavu-core
     - libgtk-3-0
-    # GPU firmware the graphics stack / initrd may load at boot
-    - firmware-linux
-    - firmware-misc-nonfree
+    # GPU firmware is provided by the base's firmware-intel-graphics /
+    # firmware-intel-misc packages. Audio DSP firmware (e.g. SOF firmware for
+    # Meteor Lake/Arrow Lake, intel/sof-ipc4/arl/sof-arl.ri) ships in a separate
+    # package the base does not need, so add it here for the desktop's audio.
+    - firmware-sof-signed
     # Display manager + GNOME session — turns the backend X/Mesa stack into a
     # graphical login. gdm3 is the GNOME Display Manager; gnome-session provides
     # the session gdm launches; gnome-shell is that session's compositor and is
